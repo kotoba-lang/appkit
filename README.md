@@ -45,3 +45,13 @@ kotobase.net console — dense/desktop-first product surfaces.
 clojure -M:test
 clojure -M:local:test   # local ../kotoba-ui override
 ```
+
+## Building an app? Read the agent guide first
+
+The canonical paved-road recipe for building refined, Apple-HIG-quality pages
+with this stack (HIG semantic tokens via `shitsuke.hig`, the
+`@layer kotoba.hig, kotoba.glass` cascade contract — unlayered app CSS always
+wins, `kotoba-ui.shell` layout scaffolds, single theme map, `->page`) lives in
+[`kotoba-ui/docs/agent-guide.md`](../kotoba-ui/docs/agent-guide.md)
+(ADR-2607122200). Apps require `kotoba-ui.core` plus this binding — never
+`liquid-glass.*` / `shitsuke.*` directly.
