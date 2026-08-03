@@ -4,7 +4,7 @@
  ;; Owns no tokens/CSS/component logic; never modifies shitsuke/liquid-glass-ui/
  ;; kotoba-ui. See docs/adr/0001-appkit.md.
  :deps {io.github.kotoba-lang/kotoba-ui {:git/url "https://github.com/kotoba-lang/kotoba-ui.git"
-         :git/sha "4167b3aa911690368bb47b61e825c47d3327bfac"}}
+         :git/sha "3a28afc235967044abed86f090804f26852543b4"}}
  :aliases
  {:test {:extra-paths ["test"]
          :extra-deps {io.github.cognitect-labs/test-runner
