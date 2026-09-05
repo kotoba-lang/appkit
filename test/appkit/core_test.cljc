@@ -130,3 +130,47 @@
   (testing "the 1-arity form is exactly the 2-arity form with {}, not a separate default path"
     (is (= (ui/->html (app/panel ["x"] {})) (ui/->html (app/panel ["x"]))))
     (is (= (ui/->html (app/list-view [] {})) (ui/->html (app/list-view []))))))
+
+;; ---------------------------------------------------------------------------
+;; Passthrough: appkit supplies defaults and nothing else
+;;
+;; Everything above pins *which* defaults appkit applies and that a caller can
+;; override them. None of it pins that the caller's own content and options
+;; survive the wrap at all. Measured on 2026-09-05, before these were added:
+;; rendering a constant instead of `body`, dropping `rows` on the floor, and
+;; running `opts` through `(select-keys opts [:surface :elevation])` each left
+;; the whole suite at exit 0. A wrapper that quietly renders the wrong content
+;; is the one failure this repo cannot afford, because appkit's only job is to
+;; be invisible.
+;;
+;; These read the rendered HTML rather than the opt map, so they fail for the
+;; consumer-visible reason and not for an internal shape appkit is free to
+;; change.
+;; ---------------------------------------------------------------------------
+
+(deftest panel-renders-the-caller-body-test
+  (testing "the body belongs to the caller: appkit adds options, never content"
+    (is (str/includes? (ui/->html (app/panel [:p "appkit-body-marker"]))
+                       "<p>appkit-body-marker</p>"))))
+
+(deftest list-view-renders-the-caller-rows-test
+  (testing "every row arrives, in the caller's order — a wrapper that drops rows still looks like a list"
+    ;; One assertion over the extracted rows rather than three over the string:
+    ;; a dropped row then reads as `[]` instead of erroring on a nil index, and
+    ;; a reordered one reads as the order it actually came out in.
+    (let [html (ui/->html (app/list-view [[:li "row-alpha"] [:li "row-beta"]]))]
+      (is (= ["row-alpha" "row-beta"]
+             (map second (re-seq #"<li>(row-[a-z]+)</li>" html)))))))
+
+(deftest opts-appkit-knows-nothing-about-still-arrive-test
+  (testing "appkit merges defaults *under* the caller's opts; it does not select from them"
+    ;; In liquid-glass v1 `panel` takes :id and `list-view` takes :class, and
+    ;; neither is an appkit default — so each reaches kotoba-ui only if appkit
+    ;; hands the opt map on whole. Narrowing it to the keys appkit knows about
+    ;; still satisfies every override test above, while silently breaking any
+    ;; consumer that composes its own opts on top of the published default maps
+    ;; (which is the documented way to use them).
+    (is (str/includes? (ui/->html (app/panel ["x"] {:id "appkit-id-marker"}))
+                       "appkit-id-marker"))
+    (is (str/includes? (ui/->html (app/list-view [] {:class "appkit-class-marker"}))
+                       "appkit-class-marker"))))
