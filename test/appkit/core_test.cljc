@@ -174,3 +174,43 @@
                        "appkit-id-marker"))
     (is (str/includes? (ui/->html (app/list-view [] {:class "appkit-class-marker"}))
                        "appkit-class-marker"))))
+
+;; ---------------------------------------------------------------------------
+;; Both wrappers, held to the same contract
+;;
+;; Everything above pins `panel` hard and `list-view` softly. Measured on
+;; 2026-09-06 against the suite as it then stood (12 tests, 20 assertions):
+;;
+;;   (merge opts default-list-view-opts)                     -> 12 green, exit 0
+;;   (ui/panel body (merge default-panel-opts {:id ..} opts)) -> 12 green, exit 0
+;;
+;; The first reverses the merge on `list-view` only, so the caller's `:surface`
+;; loses to appkit's default. `panel`'s merge order has been pinned since the
+;; first pass (`caller-opts-win-test`); `list-view`'s never was. That asymmetry
+;; is this repo's characteristic failure — two of the existing mutations
+;; (`*-arity-1-bypasses-defaults`) exist because `panel` was fixed and
+;; `list-view` was missed in exactly this way.
+;;
+;; The second adds a default the published map does not mention. Both maps are
+;; public vars and the documented way to use them is to compose your own opts
+;; on top, so they mean something only if they are the *whole* of what each
+;; wrapper adds. `default-opts-are-published-contract-test` pins their values;
+;; nothing pinned that the wrappers apply those values and no others, so the
+;; maps could keep their asserted contents while ceasing to describe appkit.
+;; ---------------------------------------------------------------------------
+
+(deftest list-view-caller-opts-win-test
+  (testing "list-view honours an explicit :surface, same merge contract as panel"
+    (let [html (ui/->html (app/list-view [] {:surface :clear}))]
+      (is (str/includes? html "liquid-glass__list--clear"))
+      (is (not (str/includes? html "liquid-glass__list--thick"))))))
+
+(deftest published-default-maps-are-complete-test
+  (testing "each published map is the whole of what its wrapper adds: composing from it matches calling the wrapper"
+    ;; Rendered HTML rather than the opt map, so an undeclared default is
+    ;; caught only when it reaches the consumer — appkit stays free to change
+    ;; how it gets there.
+    (is (= (ui/->html (ui/panel ["x"] app/default-panel-opts))
+           (ui/->html (app/panel ["x"]))))
+    (is (= (ui/->html (ui/list-view [] app/default-list-view-opts))
+           (ui/->html (app/list-view []))))))
