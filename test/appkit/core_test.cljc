@@ -214,3 +214,102 @@
            (ui/->html (app/panel ["x"]))))
     (is (= (ui/->html (ui/list-view [] app/default-list-view-opts))
            (ui/->html (app/list-view []))))))
+
+;; ---------------------------------------------------------------------------
+;; The two remaining panel/list-view asymmetries
+;;
+;; Everything above pins both wrappers to the same contract, but two of the
+;; assertions reach that contract through a single example each, and the
+;; example was chosen on the `panel` side. Measured on 2026-09-07 against the
+;; suite as it then stood (14 tests, 24 assertions):
+;;
+;;   (merge default-panel-opts (dissoc opts :class))      -> 14 green, exit 0
+;;   (ui/list-view rows (merge default-panel-opts opts))  -> 14 green, exit 0
+;;
+;; Both are this repo's characteristic failure — `panel` covered, `list-view`
+;; or the second key missed — and both are a plausible edit rather than a
+;; contrived one: the first is the shape `:appkit/panel-opts-filtered` already
+;; guards, one key narrower; the second is a copy-paste of the line above it.
+;;
+;; The mirror of each is already dead (`panel-drops-id`,
+;; `panel-uses-list-view-defaults` both go red), which is what makes these two
+;; asymmetries rather than gaps.
+;; ---------------------------------------------------------------------------
+
+(def ^:private probe-opt-keys
+  "Attribute-ish opts a consumer might compose on top of a published default
+   map. A probe list, not a claim: kotoba-ui honours some subset of these and
+   `forwarded-opt-keys` measures which, so a key liquid-glass starts honouring
+   is picked up here without an edit. A key outside this list is still
+   unmeasured — the bound is the list, and it is deliberately visible."
+  [:id :class :label :role :style :title :data-testid])
+
+(defn- forwarded-opt-keys
+  "The subset of `probe-opt-keys` that `component` actually renders — measured
+   against the pinned kotoba-ui rather than asserted in prose, same reason as
+   the variance-point sweep above. Opts a component ignores (`:id` on
+   `list-view`, in liquid-glass v1) are excluded, so appkit is never held to
+   forwarding something no one can observe."
+  [component base]
+  (into (sorted-set)
+        (filter (fn [k]
+                  (let [marker (str "appkit-probe-" (name k))]
+                    (str/includes? (ui/->html (component base {k marker})) marker)))
+                probe-opt-keys)))
+
+(deftest every-forwarded-opt-survives-the-wrap-test
+  (testing "every opt kotoba-ui honours reaches it through appkit — not only the one key a test happened to pick"
+    ;; `opts-appkit-knows-nothing-about-still-arrive-test` pins :id on panel and
+    ;; :class on list-view. panel honours both, so dropping :class there left
+    ;; the suite green while breaking the one opt a multi-pane desktop layout
+    ;; needs most — which is the layer appkit exists to serve.
+    (let [panel-keys (forwarded-opt-keys ui/panel ["x"])
+          list-keys  (forwarded-opt-keys ui/list-view [])]
+      ;; Evidence floor. Every assertion below is `doseq`-driven, so a sweep
+      ;; that measured nothing would run zero assertions and read exactly like
+      ;; a sweep that measured everything and found no fault.
+      (is (seq panel-keys) "sweep measured no forwarded opt on kotoba-ui panel")
+      (is (seq list-keys) "sweep measured no forwarded opt on kotoba-ui list-view")
+      (doseq [k panel-keys
+              :let [marker (str "appkit-probe-" (name k))]]
+        (is (str/includes? (ui/->html (app/panel ["x"] {k marker})) marker)
+            (str "appkit panel dropped a forwarded opt: " k)))
+      (doseq [k list-keys
+              :let [marker (str "appkit-probe-" (name k))]]
+        (is (str/includes? (ui/->html (app/list-view [] {k marker})) marker)
+            (str "appkit list-view dropped a forwarded opt: " k))))))
+
+;; ---------------------------------------------------------------------------
+;; Wiring `list-view` to `default-panel-opts` renders identically today,
+;; because liquid-glass's `list-view` reads only :surface and :class and drops
+;; :elevation on the floor. So `published-default-maps-are-complete-test`,
+;; which compares renders, cannot see it — and neither can any other assertion
+;; in this file, all of which are render-based on principle ("fail for the
+;; consumer-visible reason, not for an internal shape appkit is free to
+;; change").
+;;
+;; This one deliberately breaks that principle, because here the render cannot
+;; carry the fault: the published maps are public vars whose documented use is
+;; to compose your own opts on top, so they mean something only if each is the
+;; map its own wrapper actually applies. A wrapper applying the other map keeps
+;; every render identical while making the published var decorative — and it
+;; becomes consumer-visible the moment liquid-glass gives `list-view` an
+;; :elevation variance point, which is exactly the drift the sweep at the top
+;; of this file exists to detect.
+;;
+;; JVM-only, alongside the sweep: it observes the call rather than the output.
+;; ---------------------------------------------------------------------------
+
+#?(:clj
+   (deftest each-wrapper-applies-its-own-published-map-test
+     (testing "each wrapper hands kotoba-ui its own published map merged under the caller's opts, and no other"
+       ;; `seen` starts at ::never-called, so a with-redefs that failed to
+       ;; intercept fails the assertion instead of comparing nothing.
+       (let [seen (atom ::never-called)]
+         (with-redefs [ui/panel (fn [_body opts] (reset! seen opts) [:div])]
+           (app/panel ["x"] {:id "appkit-applied-marker"}))
+         (is (= (merge app/default-panel-opts {:id "appkit-applied-marker"}) @seen)))
+       (let [seen (atom ::never-called)]
+         (with-redefs [ui/list-view (fn [_rows opts] (reset! seen opts) [:div])]
+           (app/list-view [] {:class "appkit-applied-marker"}))
+         (is (= (merge app/default-list-view-opts {:class "appkit-applied-marker"}) @seen))))))
