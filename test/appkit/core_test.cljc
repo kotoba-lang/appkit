@@ -19,10 +19,12 @@
 ;; restatement of the claim becomes wrong with no signal. So it is measured
 ;; against the pinned kotoba-ui rather than asserted in prose.
 ;;
-;; JVM-only: the sweep needs `ns-publics`, and `clojure -M:test` is this repo's
-;; only runner (there is no cljs build here). If one is ever added, this needs
-;; an explicit component table instead — the assertion is the point, not the
-;; reflection.
+;; JVM-only: the sweep needs `ns-publics`. The rest of this file also runs on
+;; cljs (`nbb test/appkit/cljs_runner.cljs` loads this namespace under
+;; cljs.test), where the `#?(:clj …)` tests simply do not exist — the sweep is
+;; a claim about kotoba-ui, measured once on the JVM is enough. What the cljs
+;; run adds is the other direction: appkit's own `.cljc` staying loadable and
+;; identical on the runtime its consumers use.
 ;; ---------------------------------------------------------------------------
 
 #?(:clj

@@ -42,9 +42,20 @@ kotobase.net console — dense/desktop-first product surfaces.
 ## Tests
 
 ```bash
-clojure -M:test
-clojure -M:local:test   # local ../kotoba-ui override
+clojure -M:test                               # JVM
+clojure -M:local:test                         # local ../kotoba-ui override
+nbb test/appkit/cljs_runner.cljs              # the same suite on cljs (nbb)
+nbb test/appkit/cljs_runner.cljs :local:test  # …with the local override
 ```
+
+appkit is `.cljc` and its consumers are browsers, so the suite runs on both.
+The cljs runner loads the same `appkit.core-test` under `cljs.test` on the
+classpath `clojure -Spath` resolves (no hand-written sibling list); the three
+`#?(:clj …)` tests (the variance-point sweep, the public-var census, the
+`with-redefs` probe) exist only on the JVM side, so its count is smaller on
+purpose. A JVM-only regression — a `#?(:clj …)` around a wrapper, a
+`clojure.java.*` require, a reader conditional whose `:cljs` branch drifts —
+keeps `clojure -M:test` green and is caught only here.
 
 ## Building an app? Read the agent guide first
 
