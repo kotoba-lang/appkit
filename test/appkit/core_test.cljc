@@ -498,3 +498,197 @@
           (str "appkit's panel did not keep its children in the caller's order "
                "(toolbar at " (pr-str i) ", list at " (pr-str j) "; nil means the "
                "child is not in the markup at all)")))))
+
+;; ---------------------------------------------------------------------------
+;; The README is the entry point, and nothing had read it
+;;
+;; Everything above measures the code. The README makes checkable claims about
+;; that code — a default-opts table, and a usage block a reader will paste —
+;; and until now not one byte of it was read by anything. Measured 2026-09-10
+;; against the suite as it then stood (19 tests, 41 assertions):
+;;
+;;   table `:elevation :flat` -> `:raised`      -> 19 tests / 41 assertions, exit 0
+;;   usage `ui/icon-button` -> `ui/icon-btn`    -> 19 tests / 41 assertions, exit 0
+;;   usage `app/panel`/`app/list-view` -> `ui/` -> 19 tests / 41 assertions, exit 0
+;;
+;; The third is the one that matters. A README whose worked example calls the
+;; bare components documents how to bypass the binding this repo exists to be,
+;; and it renders perfectly while doing it — no exception, no missing markup,
+;; nothing to notice.
+;;
+;; The composition section above already pins the SHAPE of that example (a pane
+;; holding a toolbar above a list) but writes that shape out here, in Clojure.
+;; Two copies of one example and nothing holding them together; the note left
+;; when the second copy was written said so. These read the README's copy.
+;;
+;; Both halves measure rather than list. The table is compared against
+;; `ns-publics` of `appkit.core`, so a wrapper the README never documented
+;; fails here instead of waiting for someone to remember. What appkit
+;; contributes to a render is taken as the difference between its wrapper's
+;; markup and the bare kotoba-ui one's — no liquid-glass class name is written
+;; down in this section, so none of it has to be kept in step with v1.
+;;
+;; JVM-only: it reads a file and evals. Like the sweep, this is a claim about
+;; the repo, and measuring it once is enough.
+;; ---------------------------------------------------------------------------
+
+#?(:clj (def ^:private readme-path "README.md"))
+
+#?(:clj
+   (defn- readme-src []
+     (let [f (java.io.File. readme-path)]
+       (when (.isFile f) (slurp f)))))
+
+#?(:clj
+   (defn- readme-default-opts-table
+     "The README's `| fn | default opts |` rows, as {fn-name opts-map}."
+     [src]
+     (when src
+       (into {}
+             (map (fn [[_ f m]] [f (read-string m)]))
+             (re-seq #"(?m)^\s*\|\s*`([^`]+)`\s*\|\s*`(\{[^`]*\})`\s*\|" src)))))
+
+#?(:clj
+   (defn- published-default-maps
+     "appkit's public `default-*-opts` vars, keyed by the wrapper they belong to."
+     []
+     (into {}
+           (keep (fn [[sym v]]
+                   (when-let [[_ f] (re-matches #"default-(.+)-opts" (name sym))]
+                     [f @v])))
+           (ns-publics 'appkit.core))))
+
+#?(:clj
+   (deftest readme-default-opts-table-is-the-published-contract-test
+     (testing "the README's default-opts table states exactly what appkit publishes"
+       (let [published  (published-default-maps)
+             documented (readme-default-opts-table (readme-src))]
+         ;; Evidence floor: two empty maps are equal. A README that could not be
+         ;; read, or a table this pattern no longer matches, would compare clean.
+         (is (seq published)
+             "appkit publishes no default-*-opts var, so the README was checked against nothing")
+         (is (seq documented)
+             (str "no default-opts row could be read out of " readme-path
+                  " — the README's table went unmeasured, which is not a pass"))
+         (is (= published documented)
+             (str "the README's default-opts table and appkit's published vars disagree. "
+                  "Those maps are API — consumers compose their own opts on top of them — "
+                  "so a reader who trusts the table builds a different pane than the code makes. "
+                  "published " (pr-str published) ", documented " (pr-str documented)))))))
+
+#?(:clj (def ^:private usage-did-not-run "APPKIT-README-USAGE-DID-NOT-RUN: "))
+
+#?(:clj
+   (defn- readme-usage-forms
+     "The forms of the ```clojure block under `## Usage`, or nil if there is none."
+     [src]
+     (when-let [block (second (re-find #"(?s)\n## Usage\s*\n+```clojure\n(.*?)\n```" (or src "")))]
+       (let [eof (Object.)
+             r   (java.io.PushbackReader. (java.io.StringReader. block))]
+         (loop [acc []]
+           (let [f (read {:eof eof} r)]
+             (if (identical? f eof) acc (recur (conj acc f)))))))))
+
+#?(:clj
+   (defn- readme-usage-html
+     "Render the value of the README's usage block, evaluated in a namespace
+      that starts empty — a reader pastes the whole block into a fresh REPL, so
+      the block's own `(require …)` is part of what is under test. Returns the
+      markup, or a marker carrying the reason there is none, so that a block
+      which cannot run fails by the name of the test that wanted it rather than
+      as an exception from inside `eval`."
+     []
+     (let [forms (readme-usage-forms (readme-src))]
+       (cond
+         (nil? forms)   (str usage-did-not-run "no ```clojure block under ## Usage in " readme-path)
+         (empty? forms) (str usage-did-not-run "the ## Usage block in " readme-path " has no forms")
+         :else
+         (let [tmp (create-ns (gensym "appkit-readme-usage-"))]
+           (try (binding [*ns* tmp]
+                  (refer-clojure)
+                  (ui/->html (last (mapv eval forms))))
+                (catch Throwable e
+                  (str usage-did-not-run (.getName (class e)) ": " (ex-message e)))
+                (finally (remove-ns (ns-name tmp)))))))))
+
+#?(:clj
+   (def ^:private wrapper-arg-shapes
+     "Shapes to probe a wrapper with. Bounded and visible on purpose: if none of
+      them renders both the appkit and the kotoba-ui version, the contribution
+      comes back empty and the floor below fails rather than measuring nothing."
+     [[["x"]] [[]] [{}]]))
+
+#?(:clj
+   (defn- appkit-contribution
+     "The modifier classes appkit's `sym` puts in a render that kotoba-ui.core's
+      own `sym` does not — what appkit is for, taken from the two renders rather
+      than written down here."
+     [sym]
+     (let [a    (get (ns-publics 'appkit.core) sym)
+           u    (get (ns-publics 'kotoba-ui.core) sym)
+           mods #(set (re-seq #"liquid-glass__[a-z0-9-]+--[a-z0-9-]+" %))]
+       (when (and a u)
+         (some (fn [args]
+                 (let [ah (render-or-nil @a args)
+                       uh (render-or-nil @u args)]
+                   (when (and ah uh)
+                     (let [d (into #{} (remove (mods uh)) (mods ah))]
+                       (when (seq d) d)))))
+               wrapper-arg-shapes)))))
+
+#?(:clj
+   (defn- appkit-wrapped-names
+     "What appkit wraps: its public fns that kotoba-ui.core also publishes."
+     []
+     (let [catalog (ns-publics 'kotoba-ui.core)]
+       (into (sorted-set)
+             (keep (fn [[sym v]] (when (and (fn? @v) (contains? catalog sym)) sym)))
+             (ns-publics 'appkit.core)))))
+
+#?(:clj
+   (deftest readme-usage-example-runs-from-a-clean-namespace-test
+     (testing "the README's usage block is code a reader can paste into a fresh REPL"
+       (let [html (readme-usage-html)
+             ran? (not (str/starts-with? html usage-did-not-run))]
+         (is ran?
+             (str "the README's usage block did not run. " html
+                  ". It is evaluated in a namespace that starts empty, so this "
+                  "covers the block's own (require …) line as well as the calls: "
+                  "a worked example is the first thing a new consumer meets, and "
+                  "one that no longer evaluates teaches a shape that does not exist."))
+         (when ran?
+           (is (str/includes? html "<")
+               (str "the README's usage block evaluated but rendered no markup: "
+                    (pr-str html))))))))
+
+#?(:clj
+   (deftest readme-usage-example-goes-through-appkit-test
+     (testing "the README's worked example demonstrates appkit, not bare kotoba-ui"
+       (let [html    (readme-usage-html)
+             wrapped (appkit-wrapped-names)
+             ran?    (not (str/starts-with? html usage-did-not-run))]
+         ;; Evidence floor: the doseq is driven by what was discovered, so a
+         ;; census that found nothing would run zero assertions and read exactly
+         ;; like an example that exercised every wrapper.
+         (is (seq wrapped)
+             "appkit wraps nothing kotoba-ui.core also publishes, so there was nothing to look for")
+         ;; A block that could not run and a block that bypasses appkit are
+         ;; different faults, and the report has to tell them apart: without
+         ;; this guard the first one also reports every modifier as missing
+         ;; from the marker string, which is true and says nothing.
+         (is ran?
+             (str "the README's usage block did not run, so what it demonstrates went "
+                  "unmeasured — " html))
+         (doseq [sym  wrapped
+                 :let [contribution (appkit-contribution sym)]]
+           (is (seq contribution)
+               (str "could not measure what appkit's " sym " contributes to a render — no "
+                    "probe shape rendered both it and kotoba-ui's " sym ", so the README "
+                    "example went unchecked for it"))
+           (doseq [c    contribution
+                   :when ran?]
+             (is (str/includes? html c)
+                 (str "the README's usage example does not show appkit's " sym ": its render "
+                      "carries no " c ", which is precisely what appkit adds over kotoba-ui's "
+                      "own " sym ". An example that calls the bare component documents how to "
+                      "bypass this repo, and renders perfectly while doing it."))))))))
