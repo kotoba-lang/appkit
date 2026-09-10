@@ -2,7 +2,8 @@
   (:require [clojure.test :refer [deftest is testing]]
             [kotoba.lang.text :as str]
             [kotoba-ui.core :as ui]
-            [appkit.core :as app]))
+            [appkit.core :as app]
+            #?(:clj [clojure.java.shell :as shell])))
 
 ;; ---------------------------------------------------------------------------
 ;; The variance-point sweep
@@ -315,3 +316,94 @@
          (with-redefs [ui/list-view (fn [_rows opts] (reset! seen opts) [:div])]
            (app/list-view [] {:class "appkit-applied-marker"}))
          (is (= (merge app/default-list-view-opts {:class "appkit-applied-marker"}) @seen))))))
+
+;; ---------------------------------------------------------------------------
+;; The cljs runner has to be able to start
+;;
+;; `test/appkit/cljs_runner.cljs` is launched as a bare `nbb <script>` with no
+;; --classpath, because the classpath is the thing the script itself resolves.
+;; So every namespace in the runner's own `ns` form must be one nbb ships. The
+;; suite it then runs is under no such constraint: `appkit.core-test` loads on
+;; the classpath the runner computed, and requires `kotoba.lang.text` freely.
+;;
+;; Nothing measured that distinction, and on 2026-09-09 a mechanical
+;; clojure.string -> kotoba.lang.text rewrite (74ad15c) reached the runner
+;; along with the code. The runner stopped starting — it died on `Could not
+;; find namespace: kotoba.lang.text` before loading a single test. Measured
+;; 2026-09-10 at that commit:
+;;
+;;   clojure -M:test                    -> 16 tests / 31 assertions, exit 0
+;;   nbb test/appkit/cljs_runner.cljs   -> could not begin, exit 1
+;;
+;; The entire cljs half of this repo went dark and every signal the repo
+;; emitted said it was fine. That is the failure the cljs runner was added to
+;; prevent, arriving through the runner rather than through the code — and the
+;; runner, by construction, cannot check its own requires: if one does not
+;; resolve, nothing in the file runs.
+;;
+;; Which namespaces nbb ships is nbb's to change, so this measures rather than
+;; lists: each entry of the runner's `:require` is handed to a bare `nbb -e`.
+;; A run that could not measure (no nbb on PATH) fails and says which — it does
+;; not pass. JVM-only: it reads a file and spawns a process.
+;; ---------------------------------------------------------------------------
+
+#?(:clj (def ^:private runner-path "test/appkit/cljs_runner.cljs"))
+
+#?(:clj
+   (defn- runner-require-entries
+     "The entries of the `:require` clause in the runner's `ns` form, or nil if
+      the file or that form is not there. Read from the slurped string starting
+      at `(ns `, because the file opens with a `#!` shebang the Clojure reader
+      does not accept."
+     []
+     (let [f (java.io.File. runner-path)]
+       (when (.isFile f)
+         (let [src (slurp f)
+               i   (.indexOf src "(ns ")]
+           (when (nat-int? i)
+             (some (fn [x] (when (and (sequential? x) (= :require (first x)))
+                             (seq (rest x))))
+                   (read-string (subs src i)))))))))
+
+#?(:clj
+   (defn- require-target
+     "What a `:require` entry names: a symbol namespace, or a string JS module."
+     [e]
+     (cond (or (symbol? e) (string? e)) e
+           (and (vector? e) (or (symbol? (first e)) (string? (first e)))) (first e))))
+
+#?(:clj
+   (defn- bare-nbb-require
+     "Whether nbb resolves `target` with no --classpath.
+      Three values, not a boolean: a measurement that could not be taken must
+      not read like one that was taken and found nothing wrong."
+     [target]
+     (let [form (if (string? target)
+                  (str "(require '[\"" target "\"])")
+                  (str "(require '[" target "])"))]
+       (try
+         (if (zero? (:exit (shell/sh "nbb" "-e" form))) :ok :unresolvable)
+         (catch java.io.IOException _ :no-nbb)))))
+
+#?(:clj
+   (deftest cljs-runner-is-bare-launchable-test
+     (testing "every namespace the cljs runner requires is one nbb resolves with no classpath"
+       (let [entries (runner-require-entries)
+             targets (keep require-target entries)]
+         ;; Evidence floor. The `doseq` below is driven by what was parsed, so
+         ;; a parse that found nothing would run zero assertions and read
+         ;; exactly like a runner whose every require checked out.
+         (is (seq entries)
+             (str "could not read a :require clause out of " runner-path
+                  " — the runner's requires went unmeasured, which is not a pass"))
+         (is (= (count targets) (count entries))
+             (str "a :require entry in " runner-path " was not in a shape this "
+                  "test knows how to name, so it went unmeasured: "
+                  (pr-str (remove require-target entries))))
+         (doseq [t targets
+                 :let [verdict (bare-nbb-require t)]]
+           (is (= :ok verdict)
+               (str "the cljs runner requires " (pr-str t) ", and a bare "
+                    "`nbb " runner-path "` cannot resolve it (measured: "
+                    (name verdict) "). The runner dies on this before loading "
+                    "any test, and the JVM suite stays green.")))))))
