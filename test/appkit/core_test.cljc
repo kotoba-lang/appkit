@@ -318,13 +318,13 @@
          (is (= (merge app/default-list-view-opts {:class "appkit-applied-marker"}) @seen))))))
 
 ;; ---------------------------------------------------------------------------
-;; The cljs runner has to be able to start
+;; Every launcher the docs hand an operator has to be able to start
 ;;
-;; `test/appkit/cljs_runner.cljs` is launched as a bare `nbb <script>` with no
-;; --classpath, because the classpath is the thing the script itself resolves.
-;; So every namespace in the runner's own `ns` form must be one nbb ships. The
-;; suite it then runs is under no such constraint: `appkit.core-test` loads on
-;; the classpath the runner computed, and requires `kotoba.lang.text` freely.
+;; A script launched as a bare `nbb <script>` with no --classpath — because the
+;; classpath is the thing the script itself resolves — can only require what
+;; nbb ships. The suite such a script then runs is under no such constraint:
+;; `appkit.core-test` loads on the classpath the runner computed, and requires
+;; `kotoba.lang.text` freely.
 ;;
 ;; Nothing measured that distinction, and on 2026-09-09 a mechanical
 ;; clojure.string -> kotoba.lang.text rewrite (74ad15c) reached the runner
@@ -342,21 +342,57 @@
 ;; resolve, nothing in the file runs.
 ;;
 ;; Which namespaces nbb ships is nbb's to change, so this measures rather than
-;; lists: each entry of the runner's `:require` is handed to a bare `nbb -e`.
+;; lists: each entry of a launcher's `:require` is handed to a bare `nbb -e`.
 ;; A run that could not measure (no nbb on PATH) fails and says which — it does
-;; not pass. JVM-only: it reads a file and spawns a process.
+;; not pass. JVM-only: it reads files and spawns processes.
+;;
+;; WHICH launchers is discovered the same way, and for the same reason. Pinning
+;; the runner by name left `docs/quickstart_page.cljs` — the render step of
+;; docs/operator-quickstart.md, the other thing the docs tell an operator to
+;; run bare — completely open, and it requires `clojure.string` on the very
+;; line the rewrite above rewrote. Measured 2026-09-11 on be9e3c2, applying
+;; that identical rewrite to the quickstart script:
+;;
+;;   nbb docs/quickstart_page.cljs      -> could not begin, exit 1
+;;   clojure -M:test                    -> 22 tests / 53 assertions, exit 0
+;;   nbb test/appkit/cljs_runner.cljs   -> 15 tests / 31 assertions, exit 0
+;;
+;; The same shape as 74ad15c, on the mirror the fix did not reach — this repo's
+;; characteristic failure (one side hardened, its twin missed) arriving in the
+;; docs plane. So a bare launcher is defined as what it actually is: a script
+;; this repo's prose tells a reader to run as `nbb <path>` with no --classpath.
+;; Document a new one and it is checked; stop documenting one and it stops
+;; being an operator entry point. A list here would have to be remembered, and
+;; the thing being defended against is precisely that it was not.
 ;; ---------------------------------------------------------------------------
 
-#?(:clj (def ^:private runner-path "test/appkit/cljs_runner.cljs"))
+#?(:clj (def ^:private doc-paths ["README.md" "docs/operator-quickstart.md"]))
 
 #?(:clj
-   (defn- runner-require-entries
-     "The entries of the `:require` clause in the runner's `ns` form, or nil if
-      the file or that form is not there. Read from the slurped string starting
-      at `(ns `, because the file opens with a `#!` shebang the Clojure reader
-      does not accept."
+   (defn- documented-bare-launchers
+     "Every `.cljs` script the docs tell a reader to run as a bare `nbb <path>`.
+      Commands carrying --classpath are excluded: those resolve their own, so
+      the constraint this section is about does not apply to them."
      []
-     (let [f (java.io.File. runner-path)]
+     (->> doc-paths
+          (mapcat (fn [d]
+                    (let [f (java.io.File. ^String d)]
+                      (when (.isFile f)
+                        (->> (str/split-lines (slurp f))
+                             (remove #(str/includes? % "--classpath"))
+                             (keep #(second (re-find #"\bnbb\s+(\S+\.cljs)\b" %))))))))
+          distinct
+          sort
+          vec)))
+
+#?(:clj
+   (defn- require-entries
+     "The entries of the `:require` clause in `path`'s `ns` form, or nil if the
+      file or that form is not there. Read from the slurped string starting at
+      `(ns `, because these files open with a `#!` shebang the Clojure reader
+      does not accept."
+     [path]
+     (let [f (java.io.File. ^String path)]
        (when (.isFile f)
          (let [src (slurp f)
                i   (.indexOf src "(ns ")]
@@ -386,27 +422,39 @@
          (catch java.io.IOException _ :no-nbb)))))
 
 #?(:clj
-   (deftest cljs-runner-is-bare-launchable-test
-     (testing "every namespace the cljs runner requires is one nbb resolves with no classpath"
-       (let [entries (runner-require-entries)
-             targets (keep require-target entries)]
-         ;; Evidence floor. The `doseq` below is driven by what was parsed, so
-         ;; a parse that found nothing would run zero assertions and read
-         ;; exactly like a runner whose every require checked out.
-         (is (seq entries)
-             (str "could not read a :require clause out of " runner-path
-                  " — the runner's requires went unmeasured, which is not a pass"))
-         (is (= (count targets) (count entries))
-             (str "a :require entry in " runner-path " was not in a shape this "
-                  "test knows how to name, so it went unmeasured: "
-                  (pr-str (remove require-target entries))))
-         (doseq [t targets
-                 :let [verdict (bare-nbb-require t)]]
-           (is (= :ok verdict)
-               (str "the cljs runner requires " (pr-str t) ", and a bare "
-                    "`nbb " runner-path "` cannot resolve it (measured: "
-                    (name verdict) "). The runner dies on this before loading "
-                    "any test, and the JVM suite stays green.")))))))
+   (deftest documented-bare-launchers-are-bare-launchable-test
+     (testing "every namespace a documented bare launcher requires is one nbb resolves with no classpath"
+       (let [launchers (documented-bare-launchers)]
+         ;; Evidence floors, both of them. Everything below is driven by what
+         ;; was discovered and parsed, so a discovery that found nothing — or a
+         ;; parse that did — would run zero assertions and read exactly like a
+         ;; set of launchers whose every require checked out.
+         (is (seq launchers)
+             (str "no `nbb <script>` command was found in " (pr-str doc-paths)
+                  " — the launchers went unmeasured, which is not a pass. If the"
+                  " docs really name none, this section has nothing to defend"
+                  " and should be deleted rather than left passing vacuously."))
+         (doseq [path launchers]
+           (is (.isFile (java.io.File. ^String path))
+               (str "the docs tell a reader to run `nbb " path "`, and that file"
+                    " is not in the repo — the command cannot work for anyone."))
+           (when (.isFile (java.io.File. ^String path))
+             (let [entries (require-entries path)
+                   targets (keep require-target entries)]
+               (is (seq entries)
+                   (str "could not read a :require clause out of " path
+                        " — its requires went unmeasured, which is not a pass"))
+               (is (= (count targets) (count entries))
+                   (str "a :require entry in " path " was not in a shape this "
+                        "test knows how to name, so it went unmeasured: "
+                        (pr-str (remove require-target entries))))
+               (doseq [t targets
+                       :let [verdict (bare-nbb-require t)]]
+                 (is (= :ok verdict)
+                     (str path " requires " (pr-str t) ", and a bare `nbb "
+                          path "` cannot resolve it (measured: " (name verdict)
+                          "). It dies on this before running a single line, and"
+                          " every other signal this repo emits stays green."))))))))))
 
 ;; ---------------------------------------------------------------------------
 ;; Composition: every child arrives as markup, whole and in the caller's order
@@ -692,3 +740,154 @@
                       "carries no " c ", which is precisely what appkit adds over kotoba-ui's "
                       "own " sym ". An example that calls the bare component documents how to "
                       "bypass this repo, and renders perfectly while doing it."))))))))
+
+;; ---------------------------------------------------------------------------
+;; The quickstart's render step, actually run
+;;
+;; Bare-launchability above proves these scripts can START. It says nothing
+;; about whether the one an operator came for still DOES anything, and
+;; `docs/quickstart_page.cljs` is the only thing in this repo that takes a
+;; caller all the way to bytes a browser can open. Nothing ran it. Both suites
+;; assert on the hiccup appkit returns; neither renders it.
+;;
+;; So the quickstart could break in every way that is not a require — the
+;; render expression drifting off appkit, `->page` handed the wrong shape, the
+;; four properties quietly stopped being asserted — and `clojure -M:test` and
+;; the cljs runner would both stay green, because neither one has ever opened
+;; that file.
+;;
+;; The script already discriminates hard (four properties, and it refuses to
+;; call a page that carries none of them a success). What was missing was
+;; anybody invoking it. That is what this does, once, sharing the render.
+;;
+;; Its three exits are kept apart here exactly as it emits them, because
+;; "appkit renders wrong" and "I could not get far enough to look" call for
+;; different responses — collapsing them is the failure this whole file keeps
+;; being about.
+;; ---------------------------------------------------------------------------
+
+#?(:clj (def ^:private quickstart-script "docs/quickstart_page.cljs"))
+
+#?(:clj
+   (def ^:private quickstart-render
+     "Run the quickstart's render step once into a temp file, and keep what it
+      produced: `:verdict` (:rendered / :not-discriminating / :refused /
+      :no-nbb), the script's own `:out`, and the `:html` if it wrote any.
+
+      The temp file is the point of the first argument — rendering the
+      quickstart must never leave anything in the working tree, which is what
+      the doc promises a reader."
+     (delay
+       (let [out (doto (java.io.File/createTempFile "appkit-quickstart-test" ".html")
+                   (.deleteOnExit))
+             r   (try (shell/sh "nbb" quickstart-script (.getPath out))
+                      (catch java.io.IOException e {:exit ::no-nbb :err (.getMessage e)}))
+             txt (when (and (.isFile out) (pos? (.length out))) (slurp out))]
+         {:verdict (condp = (:exit r)
+                     0      :rendered
+                     1      :not-discriminating
+                     2      :refused
+                     ::no-nbb :no-nbb
+                     :refused)
+          :out (str (:out r) (:err r))
+          :html txt}))))
+
+#?(:clj
+   (defn- quickstart-body
+     "The rendered page from `<body` on, or nil. The class assertions below look
+      only in here, for the reason the doc and the script both record: the page
+      inlines kotoba-ui's whole stylesheet, and that stylesheet names every
+      modifier that exists, so a whole-document search finds them all whether or
+      not a single element got one."
+     [html]
+     (when html
+       (when-let [i (str/index-of html "<body")] (subs html i)))))
+
+#?(:clj
+   (defn- panel-modifiers [s]
+     ;; No capture group, so `re-seq` yields the matched strings themselves.
+     ;; Mapping `first` over them here returned \l for every match, collapsing
+     ;; both sides of the comparison below to #{\l} — equal, non-empty, and
+     ;; measuring nothing. Caught by the whole-file > body assertion, which is
+     ;; the one that has to disagree with itself for the bug to show.
+     (into (sorted-set) (re-seq #"liquid-glass__panel--[a-z]+" (or s "")))))
+
+#?(:clj
+   (deftest quickstart-render-step-actually-renders-test
+     (testing "`nbb docs/quickstart_page.cljs` still takes a caller to a page"
+       (let [{:keys [verdict out html]} @quickstart-render]
+         (is (= :rendered verdict)
+             (str "`nbb " quickstart-script "` reported " (name verdict)
+                  ". :not-discriminating means it rendered a page that does not"
+                  " carry appkit's contract, and it names which property is"
+                  " missing. :refused means it could not get far enough to look"
+                  " — the classpath, or a load-time break in appkit itself, so"
+                  " this is not by itself a statement that appkit renders wrong."
+                  " :no-nbb means nbb is not on PATH, which is not a pass"
+                  " either. It said:\n" out))
+         ;; Evidence floor. Everything downstream reads `html`; without this a
+         ;; run that wrote nothing would leave the class assertions comparing
+         ;; empty sets to empty sets and calling that agreement.
+         (is (and html (pos? (count html)))
+             (str quickstart-script " wrote no page to look at — the step the"
+                  " quickstart is built around produced nothing"))
+         (is (some? (quickstart-body html))
+             "the rendered page has no <body>, so there is nothing an operator could open")))))
+
+#?(:clj
+   (deftest quickstart-worked-verification-holds-test
+     (testing "the modifiers the quickstart tells a reader they will see are the ones the page has"
+       (let [doc      (slurp "docs/operator-quickstart.md")
+             promised (panel-modifiers doc)
+             body     (quickstart-body (:html @quickstart-render))
+             actual   (panel-modifiers body)]
+         ;; Two evidence floors: the doc has to be making a claim, and the page
+         ;; has to have been rendered. Either one empty turns the comparison
+         ;; below into #{} = #{}, which passes while measuring nothing.
+         (is (seq promised)
+             (str "docs/operator-quickstart.md names no liquid-glass__panel--*"
+                  " modifier — its worked verification block, the one that lets"
+                  " a reader see the contract in the markup rather than take it"
+                  " on faith, is gone"))
+         (is (some? body)
+             "no rendered <body> to check the quickstart's claim against")
+         (when (and (seq promised) (some? body))
+           (is (= promised actual)
+               (str "the quickstart prints " (pr-str (vec promised)) " as what its"
+                    " sed|grep returns, and the page actually yields "
+                    (pr-str (vec actual)) ". A reader who runs the documented"
+                    " command gets a different answer than the document shows —"
+                    " and these three modifiers ARE appkit: two defaults and a"
+                    " caller override."))
+           ;; The doc warns that the same grep without the `sed` returns more,
+           ;; and `docs/quickstart_page.cljs` searches the body alone because of
+           ;; it. Pin the hazard, not the count — kotoba-ui owns how many
+           ;; modifiers exist, but if a whole-file search ever stopped being
+           ;; wider than a body search, that warning and that design choice
+           ;; would both be stale prose still telling a reader to be careful.
+           (is (> (count (panel-modifiers (:html @quickstart-render))) (count actual))
+               (str "a whole-file search now yields no more than a <body> search,"
+                    " so the quickstart's ⚠ block — and the body-only rule in "
+                    quickstart-script " that it explains — no longer describe"
+                    " this page")))))))
+
+#?(:clj
+   (deftest quickstart-transcript-is-what-the-script-prints-test
+     (testing "the output the quickstart shows a reader is the output they get"
+       (let [doc      (slurp "docs/operator-quickstart.md")
+             {:keys [verdict out]} @quickstart-render
+             checked  (some->> (str/split-lines doc)
+                               (filter #(str/starts-with? (str/trim %) "checked:"))
+                               first
+                               str/trim)]
+         (is (some? checked)
+             (str "docs/operator-quickstart.md shows no `checked:` line — the"
+                  " transcript a reader matches their own run against is gone"))
+         (is (= :rendered verdict)
+             "the script did not get far enough to print a transcript to compare")
+         (when (and checked (= :rendered verdict))
+           (is (str/includes? out checked)
+               (str "the quickstart shows this transcript line:\n  " checked
+                    "\nand the script actually printed:\n" out
+                    "A reader comparing their run against the document sees a"
+                    " difference that means nothing, or misses one that does.")))))))
