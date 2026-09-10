@@ -28,10 +28,20 @@
 ;; the output above the summary) / 2 REFUSED — the classpath could not be
 ;; resolved or the run measured nothing. 2 is not 0: a run that could not
 ;; happen must not print like a run that happened and found nothing.
+;; ⚠ This file is launched as a bare `nbb <script>` with no --classpath, so
+;; every namespace it requires must be one nbb itself ships. That is a
+;; different constraint from the code under test: `appkit.core-test` runs on
+;; the classpath THIS file computes below, so it may require anything deps.edn
+;; resolves — `kotoba.lang.text` among them. Measured 2026-09-10: a mechanical
+;; clojure.string -> kotoba.lang.text rewrite (74ad15c) was applied here too,
+;; and the runner stopped starting — `Could not find namespace:
+;; kotoba.lang.text`, before a single test loaded. The JVM suite stayed at 16
+;; tests / 31 assertions / 0 failures throughout, so nothing said the cljs half
+;; had gone dark. `cljs-runner-is-bare-launchable-test` now measures this.
 (ns appkit.cljs-runner
   (:require ["node:child_process" :as cp]
             ["node:path" :as path]
-            [kotoba.lang.text :as str]))
+            [clojure.string :as str]))
 
 ;; `*file*` is nbb's own binding (the script path); clj-kondo does not know it.
 (def repo (path/resolve (path/dirname #_{:clj-kondo/ignore [:unresolved-symbol]} *file*) ".." ".."))
