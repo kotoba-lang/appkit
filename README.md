@@ -24,6 +24,13 @@ directly.
 Caller-supplied opts always win (`merge default opts`), same contract as
 every liquid-glass-ui component wrap.
 
+## Quickstart
+
+New here? [`docs/operator-quickstart.md`](docs/operator-quickstart.md) goes
+from a clean checkout to a rendered page you can open, and shows appkit's
+whole contract — defaults applied, caller opts still winning —
+in the markup of that page.
+
 ## Usage
 
 ```clojure
