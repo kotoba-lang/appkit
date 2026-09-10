@@ -407,3 +407,94 @@
                     "`nbb " runner-path "` cannot resolve it (measured: "
                     (name verdict) "). The runner dies on this before loading "
                     "any test, and the JVM suite stays green.")))))))
+
+;; ---------------------------------------------------------------------------
+;; Composition: every child arrives as markup, whole and in the caller's order
+;;
+;; Every body/rows assertion above hands its wrapper a FLAT body — `["x"]`,
+;; `[:p "marker"]`, `{k marker}`. `list-view`'s rows happen to nest one level
+;; (`[[:li "row-alpha"] [:li "row-beta"]]`), so mangling them is already caught.
+;; `panel`'s body never was — and `panel` is the one that nests. A desktop pane
+;; holds a toolbar above a list; that composition is the whole of the README's
+;; usage example and the reason this repo exists.
+;;
+;; Measured 2026-09-10 against the suite as it then stood (17 tests, 36
+;; assertions), on both runtimes:
+;;
+;;   (ui/panel (vec (flatten body)) …)         -> 17 tests / 36 assertions, exit 0
+;;   (ui/panel (vec (remove vector? body)) …)  -> 17 tests / 36 assertions, exit 0
+;;
+;; The first collapses every nested element into loose keywords and attribute
+;; maps, which kotoba-ui then renders as ESCAPED TEXT — the pane shows the user
+;; `:div{:class &quot;liquid-glass__list…&quot;}` as visible garbage. The second
+;; drops element children on the floor and keeps only strings. Both mirrors on
+;; `list-view` (`flatten` and `remove vector?` over rows) are already red, which
+;; makes this an asymmetry rather than a gap: the same panel / list-view
+;; asymmetry this repo keeps producing, with the sides reversed.
+;;
+;; ⚠ Substring assertions cannot carry this fault, and look like they can. Under
+;; the first mutation the composed markup still `includes?`
+;; "liquid-glass__list--thick", "Row 1" and every other marker one would reach
+;; for — as escaped text, in a pane that is visibly broken. So these compare
+;; each child against its OWN standalone render instead: appkit adds options and
+;; never content, so a child rendered through the wrap is byte-identical to the
+;; same child rendered alone, and the only freedom the wrap has is where it puts
+;; it. That is a property of the wrap, not of any string that happens to appear.
+;; ---------------------------------------------------------------------------
+
+(def ^:private did-not-render "APPKIT-COMPOSITION-DID-NOT-RENDER: ")
+
+(defn- render-or-report
+  "Render `node`, or a marker carrying the reason it could not be rendered.
+
+   A body mangled badly enough stops rendering rather than rendering wrongly —
+   `(ui/panel [] …)` throws in liquid-glass v1, where `(ui/panel nil …)` and
+   `(ui/panel [\"x\"] …)` are both fine. Left uncaught that surfaces as an error
+   from inside the render library, so the suite goes red for a reason no
+   assertion here named. The marker can never contain a child's markup, so
+   every assertion below still fails — by its own name, with the reason."
+  [node]
+  (try (ui/->html node)
+       (catch #?(:clj Throwable :cljs :default) e
+         (str did-not-render (ex-message e)))))
+
+(defn- composition
+  "The README's usage shape — a pane holding a toolbar above a list — as
+   [composed-html [child-html …]]. Each child is built once and rendered both
+   ways, so the comparison is against the caller's own value rather than a
+   literal this file would have to keep in step with liquid-glass."
+  []
+  (let [toolbar (ui/toolbar [(ui/icon-button "appkit-menu-marker")])
+        listing (app/list-view [(ui/list-row "appkit-row-marker")])]
+    [(render-or-report (app/panel [toolbar listing]))
+     [(ui/->html toolbar) (ui/->html listing)]]))
+
+(deftest composed-children-arrive-as-markup-test
+  (testing "each child of a panel renders through the wrap exactly as it renders alone"
+    (let [[composed children] (composition)]
+      ;; Evidence floor: the doseq is driven by `children`, so a composition
+      ;; that built nothing would run zero assertions and read exactly like one
+      ;; whose every child survived.
+      (is (= 2 (count children)) "the composition under test lost a child before it was rendered")
+      (is (not (str/starts-with? composed did-not-render))
+          (str "appkit's panel could not render the caller's composition at all — " composed))
+      (doseq [child children]
+        (is (str/includes? composed child)
+            (str "a child did not survive appkit's panel as markup. appkit adds "
+                 "options and never content, so this child must appear "
+                 "byte-identical to its standalone render. Rendered alone: "
+                 (pr-str child)))))))
+
+(deftest composed-children-keep-caller-order-test
+  (testing "the toolbar stays above the list: a pane's children arrive in the order the caller wrote them"
+    ;; Separate from the assertion above because presence and order fail for
+    ;; different reasons — a wrap that reverses `body` keeps every child whole.
+    ;; `index-of` is nil when absent, so this reports "not in the markup"
+    ;; rather than comparing against nil.
+    (let [[composed [toolbar listing]] (composition)
+          i (str/index-of composed toolbar)
+          j (str/index-of composed listing)]
+      (is (and i j (< i j))
+          (str "appkit's panel did not keep its children in the caller's order "
+               "(toolbar at " (pr-str i) ", list at " (pr-str j) "; nil means the "
+               "child is not in the markup at all)")))))
