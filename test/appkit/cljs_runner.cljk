@@ -1,28 +1,28 @@
-#!/usr/bin/env nbb
+#!/usr/bin/env kbb
 ;; test/appkit/cljs_runner.cljk — run the portable test namespace on the
 ;; runtime appkit's consumers actually use.
 ;;
-;; appkit is `.cljc` and its consumers are browsers, but `clojure -M:test` was
+;; appkit is `.cljc` and its consumers are browsers, but `kbb -M:test` was
 ;; this repo's only runner. So a JVM-only regression left every JVM test green:
 ;; a `#?(:clj …)` guard around a wrapper, a `clojure.java.*` require, a reader
 ;; conditional whose :cljs branch drifts from the :clj one. Measured 2026-09-07
-;; before this file existed — each of those three edits ran `clojure -M:test`
+;; before this file existed — each of those three edits ran `kbb -M:test`
 ;; at 16 tests / 31 assertions / 0 failures. Under nbb the same suite refuses
 ;; to load the first two and fails the third.
 ;;
 ;; No second copy of the assertions: this loads `appkit.core-test` — the same
-;; .cljc file `clojure -M:test` runs — under cljs.test. The `#?(:clj …)` tests
+;; .cljc file `kbb -M:test` runs — under cljs.test. The `#?(:clj …)` tests
 ;; (the variance-point sweep, the public-var census, the with-redefs probe) do
 ;; not exist on this side, so the count is smaller than the JVM one on purpose.
 ;;
-;; The classpath is not written down here. It is whatever `clojure -Spath`
+;; The classpath is not written down here. It is whatever `kbb -Spath`
 ;; resolves for deps.edn — the same pinned shas the JVM run uses — with the
 ;; jars dropped (nbb reads directories only). A hand-written sibling list would
 ;; rot the day a transitive dep moved; this one cannot.
 ;;
 ;; Usage:
-;;   nbb test/appkit/cljs_runner.cljk               # aliases :test
-;;   nbb test/appkit/cljs_runner.cljk :local:test   # local ../kotoba-ui override
+;;   kbb --backend sci test/appkit/cljs_runner.cljk               # aliases :test
+;;   kbb --backend sci test/appkit/cljs_runner.cljk :local:test   # local ../kotoba-ui override
 ;;
 ;; Exit: 0 green / 1 a test failed or the suite did not load (the reason is in
 ;; the output above the summary) / 2 REFUSED — the classpath could not be
@@ -62,12 +62,12 @@
 (def classpath
   (let [{:keys [out err code]} (sh "clojure" ["-Spath" (str "-A" aliases)])]
     (when-not (zero? code)
-      (refuse! "clojure -Spath -A" aliases " exited " code "\n" err))
+      (refuse! "kbb -Spath -A" aliases " exited " code "\n" err))
     (let [dirs (->> (str/split (str/trim out) #":")
                     (remove #(str/ends-with? % ".jar"))
                     vec)]
       (when-not (and (some #{"src"} dirs) (some #{"test"} dirs))
-        (refuse! "classpath from clojure -Spath has no src + test: " (pr-str dirs)))
+        (refuse! "classpath from kbb -Spath has no src + test: " (pr-str dirs)))
       (str/join ":" dirs))))
 
 (def expr

@@ -21,7 +21,7 @@
 ;; against the pinned kotoba-ui rather than asserted in prose.
 ;;
 ;; JVM-only: the sweep needs `ns-publics`. The rest of this file also runs on
-;; cljs (`nbb test/appkit/cljs_runner.cljk` loads this namespace under
+;; cljs (`kbb --backend sci test/appkit/cljs_runner.cljk` loads this namespace under
 ;; cljs.test), where the `#?(:clj …)` tests simply do not exist — the sweep is
 ;; a claim about kotoba-ui, measured once on the JVM is enough. What the cljs
 ;; run adds is the other direction: appkit's own `.cljc` staying loadable and
@@ -332,8 +332,8 @@
 ;; find namespace: kotoba.lang.text` before loading a single test. Measured
 ;; 2026-09-10 at that commit:
 ;;
-;;   clojure -M:test                    -> 16 tests / 31 assertions, exit 0
-;;   nbb test/appkit/cljs_runner.cljk   -> could not begin, exit 1
+;;   kbb -M:test                    -> 16 tests / 31 assertions, exit 0
+;;   kbb --backend sci test/appkit/cljs_runner.cljk   -> could not begin, exit 1
 ;;
 ;; The entire cljs half of this repo went dark and every signal the repo
 ;; emitted said it was fine. That is the failure the cljs runner was added to
@@ -342,7 +342,7 @@
 ;; resolve, nothing in the file runs.
 ;;
 ;; Which namespaces nbb ships is nbb's to change, so this measures rather than
-;; lists: each entry of a launcher's `:require` is handed to a bare `nbb -e`.
+;; lists: each entry of a launcher's `:require` is handed to a bare `kbb --backend sci -e`.
 ;; A run that could not measure (no nbb on PATH) fails and says which — it does
 ;; not pass. JVM-only: it reads files and spawns processes.
 ;;
@@ -353,9 +353,9 @@
 ;; line the rewrite above rewrote. Measured 2026-09-11 on be9e3c2, applying
 ;; that identical rewrite to the quickstart script:
 ;;
-;;   nbb docs/quickstart_page.cljk      -> could not begin, exit 1
-;;   clojure -M:test                    -> 22 tests / 53 assertions, exit 0
-;;   nbb test/appkit/cljs_runner.cljk   -> 15 tests / 31 assertions, exit 0
+;;   kbb --backend sci docs/quickstart_page.cljk      -> could not begin, exit 1
+;;   kbb -M:test                    -> 22 tests / 53 assertions, exit 0
+;;   kbb --backend sci test/appkit/cljs_runner.cljk   -> 15 tests / 31 assertions, exit 0
 ;;
 ;; The same shape as 74ad15c, on the mirror the fix did not reach — this repo's
 ;; characteristic failure (one side hardened, its twin missed) arriving in the
@@ -418,7 +418,7 @@
                   (str "(require '[\"" target "\"])")
                   (str "(require '[" target "])"))]
        (try
-         (if (zero? (:exit (shell/sh "nbb" "-e" form))) :ok :unresolvable)
+         (if (zero? (:exit (shell/sh "kbb" "--backend" "sci" "-e" form))) :ok :unresolvable)
          (catch java.io.IOException _ :no-nbb)))))
 
 #?(:clj
@@ -752,7 +752,7 @@
 ;;
 ;; So the quickstart could break in every way that is not a require — the
 ;; render expression drifting off appkit, `->page` handed the wrong shape, the
-;; four properties quietly stopped being asserted — and `clojure -M:test` and
+;; four properties quietly stopped being asserted — and `kbb -M:test` and
 ;; the cljs runner would both stay green, because neither one has ever opened
 ;; that file.
 ;;
@@ -814,7 +814,7 @@
 
 #?(:clj
    (deftest quickstart-render-step-actually-renders-test
-     (testing "`nbb docs/quickstart_page.cljk` still takes a caller to a page"
+     (testing "`kbb --backend sci docs/quickstart_page.cljk` still takes a caller to a page"
        (let [{:keys [verdict out html]} @quickstart-render]
          (is (= :rendered verdict)
              (str "`nbb " quickstart-script "` reported " (name verdict)

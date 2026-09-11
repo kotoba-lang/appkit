@@ -42,13 +42,13 @@ git clone https://github.com/kotoba-lang/appkit.git && cd appkit
 ## 2. Prove the floor — both runtimes, not one
 
 ```bash
-clojure -M:test                     # JVM
-nbb test/appkit/cljs_runner.cljk    # the same suite on cljs
+kbb -M:test                     # JVM
+kbb --backend sci test/appkit/cljs_runner.cljk    # the same suite on cljs
 ```
 
 Both must be run. appkit is `.cljc` and ships to browsers, so a regression
 that only exists on the cljs side — a `#?(:clj …)` that swallowed a wrapper, a
-reader conditional whose `:cljs` branch drifted — keeps `clojure -M:test`
+reader conditional whose `:cljs` branch drifted — keeps `kbb -M:test`
 completely green. The README's *Tests* section has the measurement that forced
 this rule, and the `:local` variants for working against a sibling
 `../kotoba-ui` checkout.
@@ -62,7 +62,7 @@ if it measured nothing, precisely so that "ran and found no problems" and
 ## 3. Render a page and look at it
 
 ```bash
-nbb docs/quickstart_page.cljk
+kbb --backend sci docs/quickstart_page.cljk
 ```
 
 It prints the path it wrote and what it verified:
@@ -131,14 +131,14 @@ far enough to look", because those need different responses:
 | `1` | rendered, but a property is missing — the output names which one and why | that named property is the bug; the message says what it implies |
 | `2` | **REFUSED** — the classpath or the render subprocess never ran, so nothing was measured | fix the environment; this is not a statement about appkit |
 
-A `2` means one of exactly two things did not happen: `clojure -Spath` did not
+A `2` means one of exactly two things did not happen: `kbb -Spath` did not
 resolve a classpath, or the render subprocess did not run. The refusal says
 which, and repeats the underlying error. If it was the classpath, run it on
 its own to see that error directly — on a first run it is usually the network,
 while the pinned deps are still being cloned:
 
 ```bash
-clojure -Spath
+kbb -Spath
 ```
 
 ## Next
