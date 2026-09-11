@@ -1,10 +1,10 @@
 #!/usr/bin/env nbb
-;; docs/quickstart_page.cljs — the render step of docs/operator-quickstart.md.
+;; docs/quickstart_page.cljk — the render step of docs/operator-quickstart.md.
 ;;
 ;; appkit is two default option maps. That is small enough that every other
 ;; check in this repo can pass while the thing an operator came for — a page
 ;; that renders with those defaults on it — does not happen. `clojure -M:test`
-;; and `test/appkit/cljs_runner.cljs` both assert on the hiccup appkit RETURNS;
+;; and `test/appkit/cljs_runner.cljk` both assert on the hiccup appkit RETURNS;
 ;; neither renders it, and neither has ever loaded kotoba-ui's stylesheet. So
 ;; this script is not a duplicate of the suite: it is the first thing here that
 ;; takes a caller all the way to bytes a browser can open.
@@ -28,15 +28,15 @@
 ;; if the theme did not resolve you get valid HTML, no error, and a white page.
 ;;
 ;; ⚠ The classpath resolution below is duplicated from
-;; test/appkit/cljs_runner.cljs on purpose. Both files are launched as a bare
+;; test/appkit/cljs_runner.cljk on purpose. Both files are launched as a bare
 ;; `nbb <script>` with no --classpath, so neither can require a shared helper
 ;; out of src/ — a helper there is not on the classpath until AFTER the very
 ;; step it would be helping with. Do not "fix" this by extracting it; that
 ;; breaks both launchers at once.
 ;;
 ;; Usage:
-;;   nbb docs/quickstart_page.cljs             # writes into the OS temp dir
-;;   nbb docs/quickstart_page.cljs out.html    # …or where you say
+;;   nbb docs/quickstart_page.cljk             # writes into the OS temp dir
+;;   nbb docs/quickstart_page.cljk out.html    # …or where you say
 ;;
 ;; Exit: 0 the page rendered and carries the four properties above / 1 it
 ;; rendered but a property is missing (the missing one is named) / 2 REFUSED —
