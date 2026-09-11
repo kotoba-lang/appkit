@@ -43,7 +43,7 @@ git clone https://github.com/kotoba-lang/appkit.git && cd appkit
 
 ```bash
 clojure -M:test                     # JVM
-nbb test/appkit/cljs_runner.cljs    # the same suite on cljs
+nbb test/appkit/cljs_runner.cljk    # the same suite on cljs
 ```
 
 Both must be run. appkit is `.cljc` and ships to browsers, so a regression
@@ -62,7 +62,7 @@ if it measured nothing, precisely so that "ran and found no problems" and
 ## 3. Render a page and look at it
 
 ```bash
-nbb docs/quickstart_page.cljs
+nbb docs/quickstart_page.cljk
 ```
 
 It prints the path it wrote and what it verified:
@@ -117,12 +117,12 @@ rule for every modifier that exists, so a whole-file search finds `--floating`
 whether or not any element got it. This is not hypothetical: while this page
 was being built, a whole-file check called appkit correct after its merge was
 reversed, after its panel defaults were deleted, and after its list-view
-default was deleted. `docs/quickstart_page.cljs` looks only inside `<body>`
+default was deleted. `docs/quickstart_page.cljk` looks only inside `<body>`
 for exactly this reason, and the comment there records the measurement.
 
 ## When it does not work
 
-`docs/quickstart_page.cljs` separates "appkit is wrong" from "I could not get
+`docs/quickstart_page.cljk` separates "appkit is wrong" from "I could not get
 far enough to look", because those need different responses:
 
 | exit | means | do |

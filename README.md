@@ -51,8 +51,8 @@ kotobase.net console — dense/desktop-first product surfaces.
 ```bash
 clojure -M:test                               # JVM
 clojure -M:local:test                         # local ../kotoba-ui override
-nbb test/appkit/cljs_runner.cljs              # the same suite on cljs (nbb)
-nbb test/appkit/cljs_runner.cljs :local:test  # …with the local override
+nbb test/appkit/cljs_runner.cljk              # the same suite on cljs (nbb)
+nbb test/appkit/cljs_runner.cljk :local:test  # …with the local override
 ```
 
 appkit is `.cljc` and its consumers are browsers, so the suite runs on both.

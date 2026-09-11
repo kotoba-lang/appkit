@@ -1,5 +1,5 @@
 #!/usr/bin/env nbb
-;; test/appkit/cljs_runner.cljs — run the portable test namespace on the
+;; test/appkit/cljs_runner.cljk — run the portable test namespace on the
 ;; runtime appkit's consumers actually use.
 ;;
 ;; appkit is `.cljc` and its consumers are browsers, but `clojure -M:test` was
@@ -21,8 +21,8 @@
 ;; rot the day a transitive dep moved; this one cannot.
 ;;
 ;; Usage:
-;;   nbb test/appkit/cljs_runner.cljs               # aliases :test
-;;   nbb test/appkit/cljs_runner.cljs :local:test   # local ../kotoba-ui override
+;;   nbb test/appkit/cljs_runner.cljk               # aliases :test
+;;   nbb test/appkit/cljs_runner.cljk :local:test   # local ../kotoba-ui override
 ;;
 ;; Exit: 0 green / 1 a test failed or the suite did not load (the reason is in
 ;; the output above the summary) / 2 REFUSED — the classpath could not be
