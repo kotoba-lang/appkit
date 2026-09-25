@@ -41,7 +41,7 @@
 (ns appkit.cljs-runner
   (:require ["node:child_process" :as cp]
             ["node:path" :as path]
-            [clojure.string :as str]))
+            [kotoba.lang.text :as str]))
 
 ;; `*file*` is nbb's own binding (the script path); clj-kondo does not know it.
 (def repo (path/resolve (path/dirname #_{:clj-kondo/ignore [:unresolved-symbol]} *file*) ".." ".."))
